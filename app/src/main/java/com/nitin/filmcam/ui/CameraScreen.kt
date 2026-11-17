@@ -6,7 +6,6 @@ import android.view.Surface
 import android.widget.Toast
 import androidx.camera.core.CameraSelector
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -55,6 +54,7 @@ import com.nitin.filmcam.camera.Ratio
 import com.nitin.filmcam.ui.theme.Cream
 import com.nitin.filmcam.ui.theme.Ink
 import com.nitin.filmcam.ui.theme.Paper
+import com.nitin.filmcam.ui.theme.RecordRed
 import com.nitin.filmcam.ui.theme.Terracotta
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -160,6 +160,12 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                 Modifier.align(Alignment.TopCenter).padding(top = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                if (ui.recording) {
+                    StatusChip(
+                        "● " + String.format(Locale.US, "%02d:%02d", ui.recordSeconds / 60, ui.recordSeconds % 60),
+                        color = RecordRed, textColor = Color.White,
+                    )
+                }
                 if (ui.processingCount > 0) StatusChip("Processing…", spinner = true)
                 if (ui.zoomRatio > 1.01f) StatusChip(String.format(Locale.US, "%.1f×", ui.zoomRatio))
             }
@@ -173,6 +179,14 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                 .padding(top = 10.dp, bottom = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // PHOTO · VIDEO toggle
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Pill("PHOTO", selected = config.mode == CaptureMode.PHOTO, enabled = !ui.recording,
+                    onClick = { vm.setMode(CaptureMode.PHOTO) })
+                Pill("VIDEO", selected = config.mode == CaptureMode.VIDEO, enabled = !ui.recording,
+                    onClick = { vm.setMode(CaptureMode.VIDEO) })
+            }
+            Spacer(Modifier.height(6.dp))
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -190,14 +204,14 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                     }
                 })
                 ShutterButton(
-                    isVideo = false,
-                    recording = false,
+                    isVideo = config.mode == CaptureMode.VIDEO,
+                    recording = ui.recording,
                     enabled = true,
-                    onClick = vm::takePhoto,
+                    onClick = { if (config.mode == CaptureMode.PHOTO) vm.takePhoto() else vm.toggleRecording() },
                 )
                 Pill(
                     if (config.lensFacing == CameraSelector.LENS_FACING_BACK) "Front" else "Back",
-                    enabled = ui.hasFrontCamera,
+                    enabled = ui.hasFrontCamera && !ui.recording,
                     onClick = vm::flipCamera,
                 )
             }

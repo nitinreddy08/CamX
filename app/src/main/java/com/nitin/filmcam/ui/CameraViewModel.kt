@@ -6,6 +6,8 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.util.Log
 import androidx.camera.core.CameraSelector
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
@@ -42,6 +44,8 @@ data class CameraUiState(
     val message: String? = null,
     val comparing: Boolean = false,
     val hasFrontCamera: Boolean = true,
+    val recording: Boolean = false,
+    val recordSeconds: Long = 0,
 )
 
 /**
@@ -66,6 +70,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     // One photo filtered at a time keeps peak memory at ~1 photo (important for 50 MP).
     private val photoMutex = Mutex()
 
+    private var activeRecording: Recording? = null
     private var previewView: PreviewView? = null
     private var owner: LifecycleOwner? = null
 
@@ -96,6 +101,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun detach() {
+        stopRecording()
         controller.unbindAll()
         previewView = null
         owner = null
@@ -118,6 +124,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun updateConfig(transform: (BindConfig) -> BindConfig) {
+        if (_ui.value.recording) return  // never rebind mid-recording
         val old = _ui.value.config
         val new = transform(old)
         if (new == old) return
@@ -191,6 +198,59 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    // ------------------------------------------------------------------ video
+
+    fun toggleRecording() {
+        if (activeRecording != null) stopRecording() else startRecording()
+    }
+
+    private fun startRecording() {
+        val app = getApplication<Application>()
+        val withAudio = Permissions.hasAudio(app)
+        val rec = controller.startRecording(FileNames.video(), withAudio) { event ->
+            when (event) {
+                is VideoRecordEvent.Start -> {
+                    processor.recording = true
+                    _ui.update { it.copy(recording = true, recordSeconds = 0) }
+                }
+                is VideoRecordEvent.Status -> {
+                    val secs = event.recordingStats.recordedDurationNanos / 1_000_000_000L
+                    if (secs != _ui.value.recordSeconds) _ui.update { it.copy(recordSeconds = secs) }
+                }
+                is VideoRecordEvent.Finalize -> {
+                    processor.recording = false
+                    activeRecording = null
+                    val uri = event.outputResults.outputUri
+                    val saved = uri != Uri.EMPTY
+                    _ui.update {
+                        it.copy(
+                            recording = false,
+                            recordSeconds = 0,
+                            lastMedia = if (saved) uri else it.lastMedia,
+                            lastMediaIsVideo = if (saved) true else it.lastMediaIsVideo,
+                        )
+                    }
+                    if (event.error != VideoRecordEvent.Finalize.ERROR_NONE) {
+                        Log.w(TAG, "recording finished with error ${event.error}", event.cause)
+                        showMessage(if (saved) "Video saved (stopped early: error ${event.error})" else "Video failed (error ${event.error})")
+                    }
+                }
+                else -> Unit
+            }
+        }
+        if (rec == null) {
+            showMessage("Switch to VIDEO to record")
+            return
+        }
+        activeRecording = rec
+        if (!withAudio) showMessage("Recording without sound (microphone not allowed)")
+    }
+
+    fun stopRecording() {
+        activeRecording?.stop()
+        activeRecording = null
+    }
+
     // ------------------------------------------------------------------ misc
 
     fun showMessage(text: String) = _ui.update { it.copy(message = text) }
@@ -222,6 +282,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        stopRecording()
         controller.unbindAll()
         processor.release()
         photoRenderer.release()
