@@ -16,7 +16,16 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build debug APK + unit tests
-        run: ./gradlew --no-daemon --stacktrace assembleDebug testDebugUnitTest
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon assembleDebug testDebugUnitTest 2>&1 | tee build.log
+      - name: Error summary
+        if: failure()
+        run: |
+          echo "================ ERROR SUMMARY ================"
+          grep -nE '^e: |error:|ERROR:|What went wrong|^> |Could not|failed|FAILED|Exception' build.log | grep -v '^\s*at ' | head -80 || true
+          echo "--- context after 'What went wrong' ---"
+          grep -A 25 'What went wrong' build.log | head -120 || true
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
