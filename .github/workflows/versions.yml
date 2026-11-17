@@ -1,0 +1,20 @@
+# Prints the latest published versions of the Google-hosted libraries this app uses.
+# Run manually (or on push of this file) to decide what to put in gradle/libs.versions.toml.
+name: Library versions
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/versions.yml']
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Google Maven metadata
+        run: |
+          for a in com/android/tools/build/gradle androidx/camera/camera-core androidx/camera/camera-video \
+                   androidx/compose/compose-bom androidx/compose/material3/material3 androidx/activity/activity-compose \
+                   androidx/lifecycle/lifecycle-runtime-compose androidx/core/core-ktx androidx/datastore/datastore-preferences \
+                   androidx/exifinterface/exifinterface androidx/compose/material/material-icons-core androidx/test/ext/junit; do
+            echo "== $a"; curl -sSL "https://dl.google.com/dl/android/maven2/$a/maven-metadata.xml" | grep -oE '<version>[^<]+' | sed 's/<version>//' | grep -vE 'alpha|beta|rc|dev' | tail -4 | tr '\n' ' '; echo
+          done
+          echo "== SDK"; ls $ANDROID_HOME/platforms $ANDROID_HOME/build-tools; java -version 2>&1 | head -1
