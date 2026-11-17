@@ -18,11 +18,14 @@ import com.nitin.filmcam.camera.CaptureMode
 import com.nitin.filmcam.camera.Flash
 import com.nitin.filmcam.camera.Ratio
 import com.nitin.filmcam.filter.FilmParams
+import com.nitin.filmcam.filter.SettingsRepository
 import com.nitin.filmcam.gl.FilmSurfaceProcessor
 import com.nitin.filmcam.gl.PhotoFilterRenderer
 import com.nitin.filmcam.storage.FileNames
 import com.nitin.filmcam.storage.PhotoProcessor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -58,6 +61,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     val photoRenderer = PhotoFilterRenderer(app)
     val controller = CameraController(app, processor)
     private val photoProcessor = PhotoProcessor(app, photoRenderer)
+    val repository = SettingsRepository(app)
 
     private val _params = MutableStateFlow(FilmParams.DEFAULT)
     val params: StateFlow<FilmParams> = _params.asStateFlow()
@@ -75,17 +79,33 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     private var owner: LifecycleOwner? = null
 
     var saveOriginal = false
+    private var saveParamsJob: Job? = null
 
     init {
         viewModelScope.launch(Dispatchers.IO) { findLastMedia() }
+        // Restore the last-used look (persisted across app restarts).
+        viewModelScope.launch {
+            val p = repository.loadParams()
+            _params.value = p
+            processor.params = p
+        }
     }
 
     // ------------------------------------------------------------------ params
 
+    /** Applies new filter settings instantly (next preview frame) and saves them shortly after. */
     fun updateParams(p: FilmParams) {
         _params.value = p
         processor.params = p
+        // Debounce: dragging a slider fires many updates; write to disk once it settles.
+        saveParamsJob?.cancel()
+        saveParamsJob = viewModelScope.launch {
+            delay(400)
+            repository.saveParams(p)
+        }
     }
+
+    fun resetParams() = updateParams(FilmParams.DEFAULT)
 
     fun setComparing(on: Boolean) {
         processor.compareOriginal = on

@@ -6,6 +6,7 @@ import android.view.Surface
 import android.widget.Toast
 import androidx.camera.core.CameraSelector
 import androidx.camera.view.PreviewView
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -35,6 +36,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +66,8 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val ui by vm.ui.collectAsState()
+    val params by vm.params.collectAsState()
+    var filterOpen by rememberSaveable { mutableStateOf(false) }
     val config = ui.config
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
@@ -147,6 +151,12 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onTap = { off -> focusPoint = off; vm.focusAt(off.x, off.y) },
+                            // Hold-to-compare: long-press shows the unfiltered image while held.
+                            onLongPress = { vm.setComparing(true) },
+                            onPress = {
+                                tryAwaitRelease()
+                                vm.setComparing(false)
+                            },
                         )
                     }
             )
@@ -166,9 +176,19 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                         color = RecordRed, textColor = Color.White,
                     )
                 }
+                if (ui.comparing) StatusChip("Original")
                 if (ui.processingCount > 0) StatusChip("Processing…", spinner = true)
                 if (ui.zoomRatio > 1.01f) StatusChip(String.format(Locale.US, "%.1f×", ui.zoomRatio))
             }
+        }
+
+        // ---------------------------------------------------------------- filter panel
+        AnimatedVisibility(visible = filterOpen) {
+            FilterPanel(
+                params = params,
+                onChange = vm::updateParams,
+                onReset = vm::resetParams,
+            )
         }
 
         // ---------------------------------------------------------------- bottom controls
@@ -215,6 +235,7 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                     onClick = vm::flipCamera,
                 )
             }
+            Pill(if (filterOpen) "Filter ▼" else "Filter ▲", selected = filterOpen, onClick = { filterOpen = !filterOpen })
         }
     }
 }
