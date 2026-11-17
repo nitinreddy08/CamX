@@ -76,7 +76,11 @@ Source: `film-camera-app-spec.md`. These are my working notes for the overnight 
 - **APK delivery:** GitHub Actions workflow (`.github/workflows/android.yml`) builds
   `app-debug.apk` on every push and uploads it as a run artifact. Add it in M1 so every
   milestone produces a downloadable APK. Check run status/logs via GitHub MCP tools.
-- **Wrap-up:** push to `ccr-713bc4b4-6prwj8` after each milestone. **No PR.**
+- **Wrap-up:** commit + push to `ccr-713bc4b4-6prwj8` after each milestone without asking.
+  **No PR.** At the end, with Nitin's explicit OK, push the finished work to `main` too
+  (repo had no `main`; the work branch is currently the default). Never force-push.
+- **Autonomy:** once Nitin says "start", don't ask for confirmation at any point. Finish with
+  the CI-built APK plus a morning summary (what was built, deviations, test checklist).
 - **Assumptions (not asked, override if wrong):** synthetic test image; hold-to-compare
   affects preview only; `Tint` data class instead of `FloatArray`; separate ImageCapture path.
 - Don't stop to ask anything during the run — note doubts in README and pick the safe option.
