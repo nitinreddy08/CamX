@@ -67,6 +67,7 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
     val owner = LocalLifecycleOwner.current
     val ui by vm.ui.collectAsState()
     val params by vm.params.collectAsState()
+    val presets by vm.presets.collectAsState()
     var filterOpen by rememberSaveable { mutableStateOf(false) }
     val config = ui.config
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
@@ -93,8 +94,9 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
 
     // Bind the camera while this screen is shown; release it when leaving (e.g. to settings).
     DisposableEffect(previewView) {
-        previewView?.let { vm.attach(owner, it) }
-        onDispose { if (previewView != null) vm.detach() }
+        val view = previewView
+        if (view != null) vm.attach(owner, view)
+        onDispose { if (view != null) vm.detach() }
     }
 
     LaunchedEffect(ui.message) {
@@ -178,7 +180,7 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                 }
                 if (ui.comparing) StatusChip("Original")
                 if (ui.processingCount > 0) StatusChip("Processing…", spinner = true)
-                if (ui.zoomRatio > 1.01f) StatusChip(String.format(Locale.US, "%.1f×", ui.zoomRatio))
+                if (kotlin.math.abs(ui.zoomRatio - 1f) > 0.01f) StatusChip(String.format(Locale.US, "%.1f×", ui.zoomRatio))
             }
         }
 
@@ -188,6 +190,15 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                 params = params,
                 onChange = vm::updateParams,
                 onReset = vm::resetParams,
+                presetSection = {
+                    PresetRow(
+                        presets = presets,
+                        current = params,
+                        onApply = vm::applyPreset,
+                        onSave = vm::savePreset,
+                        onDelete = vm::deletePreset,
+                    )
+                },
             )
         }
 

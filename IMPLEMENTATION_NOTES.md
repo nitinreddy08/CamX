@@ -1,4 +1,7 @@
-# FilmCam — Implementation Notes (planning only, nothing built yet)
+# FilmCam — Implementation Notes
+
+> Status 2026-11-17: M1–M6 built; every milestone compiled + unit-tested on GitHub Actions.
+> dl.google.com stayed blocked in the build container, so CI was the compile loop. See README §6.
 
 Source: `film-camera-app-spec.md`. These are my working notes for the overnight build.
 

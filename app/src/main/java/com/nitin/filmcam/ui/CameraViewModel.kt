@@ -17,6 +17,7 @@ import com.nitin.filmcam.camera.CameraController
 import com.nitin.filmcam.camera.CaptureMode
 import com.nitin.filmcam.camera.Flash
 import com.nitin.filmcam.camera.Ratio
+import com.nitin.filmcam.filter.AppSettings
 import com.nitin.filmcam.filter.FilmParams
 import com.nitin.filmcam.filter.SettingsRepository
 import com.nitin.filmcam.gl.FilmSurfaceProcessor
@@ -26,7 +27,10 @@ import com.nitin.filmcam.storage.PhotoProcessor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -78,16 +82,26 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     private var previewView: PreviewView? = null
     private var owner: LifecycleOwner? = null
 
-    var saveOriginal = false
+    private var saveOriginal = false
     private var saveParamsJob: Job? = null
+
+    val settings: Flow<AppSettings> = repository.settings
+    val presets: StateFlow<Map<String, FilmParams>> =
+        repository.presets.stateIn(viewModelScope, SharingStarted.Eagerly, mapOf(FilmParams.DEFAULT_PRESET_NAME to FilmParams.DEFAULT))
+
+    private val _supports4k = MutableStateFlow(false)
+    val supports4k: StateFlow<Boolean> = _supports4k.asStateFlow()
 
     init {
         viewModelScope.launch(Dispatchers.IO) { findLastMedia() }
-        // Restore the last-used look (persisted across app restarts).
+        // Restore the last-used look and settings (persisted across app restarts).
         viewModelScope.launch {
             val p = repository.loadParams()
             _params.value = p
             processor.params = p
+            val s = repository.loadSettings()
+            saveOriginal = s.saveOriginal
+            updateConfig { it.copy(ratio = if (s.ratio43) Ratio.R4_3 else Ratio.R16_9, video4k = s.video4k) }
         }
     }
 
@@ -106,6 +120,29 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetParams() = updateParams(FilmParams.DEFAULT)
+
+    // ------------------------------------------------------------------ presets + settings
+
+    fun applyPreset(p: FilmParams) = updateParams(p)
+
+    fun savePreset(name: String) {
+        val p = _params.value
+        viewModelScope.launch { repository.savePreset(name, p) }
+    }
+
+    fun deletePreset(name: String) {
+        viewModelScope.launch { repository.deletePreset(name) }
+    }
+
+    fun setSaveOriginal(on: Boolean) {
+        saveOriginal = on
+        viewModelScope.launch { repository.updateSettings { it.copy(saveOriginal = on) } }
+    }
+
+    fun setVideo4k(on: Boolean) {
+        viewModelScope.launch { repository.updateSettings { it.copy(video4k = on) } }
+        updateConfig { it.copy(video4k = on) }
+    }
 
     fun setComparing(on: Boolean) {
         processor.compareOriginal = on
@@ -132,6 +169,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         val v = previewView ?: return
         controller.bind(o, v, _ui.value.config,
             onBound = {
+                _supports4k.value = controller.supports4k()
                 _ui.update { s ->
                     s.copy(
                         zoomRatio = 1f,
@@ -161,9 +199,10 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    fun setRatio(ratio: Ratio) = updateConfig { it.copy(ratio = ratio) }
-
-    fun setVideo4k(on: Boolean) = updateConfig { it.copy(video4k = on) }
+    fun setRatio(ratio: Ratio) {
+        viewModelScope.launch { repository.updateSettings { it.copy(ratio43 = ratio == Ratio.R4_3) } }
+        updateConfig { it.copy(ratio = ratio) }
+    }
 
     fun cycleFlash() {
         val c = _ui.value.config

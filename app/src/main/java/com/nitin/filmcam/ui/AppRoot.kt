@@ -34,7 +34,7 @@ fun AppRoot() {
     }
     when (screen) {
         Screen.CAMERA -> CameraScreen(vm, onOpenSettings = { screen = Screen.SETTINGS })
-        Screen.SETTINGS -> CameraScreen(vm, onOpenSettings = { screen = Screen.CAMERA })
-        Screen.DEBUG -> CameraScreen(vm, onOpenSettings = { screen = Screen.CAMERA })
+        Screen.SETTINGS -> SettingsScreen(vm, onBack = { screen = Screen.CAMERA }, onOpenDebug = { screen = Screen.DEBUG })
+        Screen.DEBUG -> DebugShaderScreen(vm, onBack = { screen = Screen.SETTINGS })
     }
 }

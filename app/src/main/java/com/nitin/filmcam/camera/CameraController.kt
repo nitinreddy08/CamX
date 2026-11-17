@@ -147,6 +147,7 @@ class CameraController(
                 val selector = CameraSelector.Builder().requireLensFacing(config.lensFacing).build()
                 val cam = provider.bindToLifecycle(owner, selector, group.build())
                 camera = cam
+                requestedZoom = null
                 if (config.mode == CaptureMode.VIDEO && cam.cameraInfo.hasFlashUnit()) {
                     cam.cameraControl.enableTorch(config.flash == Flash.ON)
                 }
@@ -203,10 +204,16 @@ class CameraController(
     fun zoomBy(scale: Float): Float? {
         val cam = camera ?: return null
         val state = cam.cameraInfo.zoomState.value ?: return null
-        val ratio = (state.zoomRatio * scale).coerceIn(state.minZoomRatio, state.maxZoomRatio)
+        // Accumulate on our own last request: the camera's reported zoom lags a few frames
+        // behind, and multiplying that stale value would make pinching feel sluggish.
+        val base = requestedZoom ?: state.zoomRatio
+        val ratio = (base * scale).coerceIn(state.minZoomRatio, state.maxZoomRatio)
+        requestedZoom = ratio
         cam.cameraControl.setZoomRatio(ratio)
         return ratio
     }
+
+    private var requestedZoom: Float? = null
 
     /** Whether this camera can record 4K (UHD) at all. */
     fun supports4k(): Boolean {
