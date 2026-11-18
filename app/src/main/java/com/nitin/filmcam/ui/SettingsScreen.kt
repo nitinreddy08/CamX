@@ -60,7 +60,7 @@ fun SettingsScreen(vm: CameraViewModel, onBack: () -> Unit, onOpenDebug: () -> U
         HorizontalDivider(color = Sand)
         ToggleRow(
             title = "Record 4K video",
-            subtitle = if (supports4k) "Sharper but heavier: the filter runs on 4x the pixels. Check that motion stays smooth on your phone."
+            subtitle = if (supports4k) "Sharper but heavier: the filter runs on 4x the pixels. 4K records at 30 fps; for 60 fps use 1080p."
             else "This camera doesn't offer 4K to apps (or open the camera once to check). 1080p is used.",
             checked = settings.video4k && supports4k,
             enabled = supports4k,

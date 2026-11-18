@@ -46,7 +46,7 @@ The repo includes a fixed **debug keystore** (`app/debug.keystore`), so every CI
 
 | Where | What |
 |---|---|
-| Top bar | **Flash** (photo: off/auto/on; video: torch on/off) · **4:3 / 16:9** (photo mode; video is always 16:9) · **Settings** |
+| Top bar | **Flash** (photo: off/auto/on; video: torch on/off) · **4:3 / 16:9** (photo and video each remember their own) · **30 / 60 fps** (video, 1080p) · **Settings** |
 | Preview | **Tap** to focus/expose · **pinch** to zoom · **long-press** to see the unfiltered image while you hold |
 | Bottom | **PHOTO · VIDEO** toggle · last-capture **thumbnail** (opens the gallery) · **shutter** · **Front/Back** |
 | **Filter ▲** | Opens the slider panel above the controls (about a third of the screen, so the preview stays big): presets, Intensity, Exposure, Warmth, Grain amount, Grain size, Halation, Softness, Vignette, Reset, and **Advanced** (film curve, contrast, black lift, white roll-off, saturation, pastel highlights, dye mixing, colour density, green controls, **per-colour editor**, three RGB tints, grain character, video film motion) |
@@ -54,6 +54,8 @@ The repo includes a fixed **debug keystore** (`app/debug.keystore`), so every CI
 
 - **Presets:** tap a preset to apply it, tap **+ Save** to store the current sliders, and long-press a preset to delete it. Two built-ins can't be deleted: **Field** (the original spec look) and **Golden** (the tuned film look, see §5b).
 - **Persistence:** the last-used look, your presets and your settings are kept across restarts (DataStore, JSON).
+- **Video:** 1080p (or 4K at 30 fps) in 4:3 or 16:9, at 30 or 60 fps. A chip shows the frame rate the camera actually delivers, e.g. "1080p · 16:9 · 60 fps". Bitrate is set high on purpose (20 Mbps at 1080p30, 32 at 1080p60, 60 at 4K), because film grain is exactly the fine detail a starved encoder smears away. If the camera doesn't offer 60 fps to apps, you get a message and it records at 30.
+- **Presets:** besides Field and Golden there is **Ochre**, tuned to a reference you sent: rich mustard and rust warm colours, muted steel-blue cools, warm-grey neutrals, and heavy fine grain that stays strong in the shadows.
 - **Saved files:** `Pictures/FilmCam/IMG_yyyyMMdd_HHmmss.jpg` (JPEG quality 95) and `Movies/FilmCam/VID_yyyyMMdd_HHmmss.mp4`. With "save original" on, you also get `IMG_..._original.jpg`.
 
 ---
@@ -160,7 +162,7 @@ Tune it further on the phone, then save your version with **+ Save**.
 ## 6. Decisions and deviations from the spec (and why)
 
 1. **Photo path: separate ImageCapture.** Photos are captured unfiltered at full resolution and then filtered offscreen with the same shader. Routing stills through the effect can cap them at stream resolution.
-2. **Photo mode vs video mode bind different use cases.** Photo binds Preview + ImageCapture. Video binds Preview + VideoCapture with one effect for both, so CameraX shares a single stream and the recording is exactly the preview. Switching mode rebinds, which causes a short blink. Video is always 16:9.
+2. **Photo mode vs video mode bind different use cases.** Photo binds Preview + ImageCapture. Video binds Preview + VideoCapture with one effect for both, so CameraX shares a single stream and the recording is exactly the preview. Switching mode rebinds, which causes a short blink. Video can be 4:3 (1440×1080) or 16:9 (1920×1080).
 3. **Order is soften → grade, not grade → soften.** Grading is per-pixel, so blurring first and grading once looks the same but is about 9× cheaper (one grade instead of nine).
 4. **Grain and softness scale with the short side, not the height.** "1080p" means a short side of 1080 px. Using the short side makes portrait previews, landscape photos and 50 MP stills all match. I checked this offline: grain strength and grain size relative to the frame came out the same at 1080p and 12 MP.
 5. **Grain is two-octave smoothed value noise with an integer hash (pcg3d).** This avoids the classic `sin()` hash, which shows patterns on mobile GPUs. The noise is luminance-only, approximately Gaussian (average of 3 hashes), and midtone-weighted as specified. It changes every frame in video and is static for photos.

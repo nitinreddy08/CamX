@@ -89,6 +89,9 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
     val presets: StateFlow<Map<String, FilmParams>> =
         repository.presets.stateIn(viewModelScope, SharingStarted.Eagerly, mapOf(FilmParams.DEFAULT_PRESET_NAME to FilmParams.DEFAULT))
 
+    private val _supports60 = MutableStateFlow(true)
+    val supports60: StateFlow<Boolean> = _supports60.asStateFlow()
+
     private val _supports4k = MutableStateFlow(false)
     val supports4k: StateFlow<Boolean> = _supports4k.asStateFlow()
 
@@ -101,7 +104,14 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
             processor.params = p
             val s = repository.loadSettings()
             saveOriginal = s.saveOriginal
-            updateConfig { it.copy(ratio = if (s.ratio43) Ratio.R4_3 else Ratio.R16_9, video4k = s.video4k) }
+            updateConfig {
+                it.copy(
+                    ratio = if (s.ratio43) Ratio.R4_3 else Ratio.R16_9,
+                    videoRatio = if (s.videoRatio43) Ratio.R4_3 else Ratio.R16_9,
+                    video4k = s.video4k,
+                    video60 = s.video60,
+                )
+            }
         }
     }
 
@@ -170,6 +180,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         controller.bind(o, v, _ui.value.config,
             onBound = {
                 _supports4k.value = controller.supports4k()
+                _supports60.value = controller.supports60fps()
                 _ui.update { s ->
                     s.copy(
                         zoomRatio = 1f,
@@ -199,10 +210,28 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Aspect ratio for the current mode (photo and video each remember their own). */
     fun setRatio(ratio: Ratio) {
-        viewModelScope.launch { repository.updateSettings { it.copy(ratio43 = ratio == Ratio.R4_3) } }
-        updateConfig { it.copy(ratio = ratio) }
+        if (_ui.value.config.mode == CaptureMode.VIDEO) {
+            viewModelScope.launch { repository.updateSettings { it.copy(videoRatio43 = ratio == Ratio.R4_3) } }
+            updateConfig { it.copy(videoRatio = ratio) }
+        } else {
+            viewModelScope.launch { repository.updateSettings { it.copy(ratio43 = ratio == Ratio.R4_3) } }
+            updateConfig { it.copy(ratio = ratio) }
+        }
     }
+
+    fun setVideo60(on: Boolean) {
+        if (on && !_supports60.value) {
+            showMessage("This camera doesn't offer 60 fps to apps; recording at 30 fps")
+        }
+        if (on && _ui.value.config.video4k) showMessage("60 fps is for 1080p; turn off 4K in Settings to use it")
+        viewModelScope.launch { repository.updateSettings { it.copy(video60 = on) } }
+        updateConfig { it.copy(video60 = on) }
+    }
+
+    /** Frames per second the camera is actually delivering right now (0 = unknown). */
+    fun measuredFps(): Float = processor.measuredFps
 
     fun cycleFlash() {
         val c = _ui.value.config

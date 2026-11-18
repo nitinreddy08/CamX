@@ -60,6 +60,7 @@ import com.nitin.filmcam.ui.theme.RecordRed
 import com.nitin.filmcam.ui.theme.Terracotta
 import kotlinx.coroutines.delay
 import java.util.Locale
+import kotlin.math.roundToInt
 
 @Composable
 fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
@@ -72,6 +73,15 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
     val config = ui.config
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
+
+    // Real frame rate from the camera, refreshed twice a second (so you can see 60 fps is real).
+    var measuredFps by remember { mutableStateOf(0f) }
+    LaunchedEffect(config.mode) {
+        while (true) {
+            measuredFps = vm.measuredFps()
+            delay(500)
+        }
+    }
 
     // The UI is portrait-locked, so watch the physical orientation ourselves and tell CameraX,
     // which then tags photos/videos with the right rotation.
@@ -122,11 +132,21 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Pill(config.flash.label, onClick = vm::cycleFlash)
+            val isVideo = config.mode == CaptureMode.VIDEO
+            val currentRatio = if (isVideo) config.videoRatio else config.ratio
             Pill(
-                if (config.mode == CaptureMode.VIDEO) "16:9" else config.ratio.label,
-                enabled = config.mode == CaptureMode.PHOTO,
-                onClick = { vm.setRatio(if (config.ratio == Ratio.R4_3) Ratio.R16_9 else Ratio.R4_3) },
+                currentRatio.label,
+                enabled = !ui.recording,
+                onClick = { vm.setRatio(if (currentRatio == Ratio.R4_3) Ratio.R16_9 else Ratio.R4_3) },
             )
+            if (isVideo) {
+                Pill(
+                    config.videoFps.toString() + " fps",
+                    enabled = !ui.recording,
+                    selected = config.videoFps == 60,
+                    onClick = { vm.setVideo60(!config.video60) },
+                )
+            }
             Spacer(Modifier.weight(1f))
             Pill("Settings", onClick = onOpenSettings)
         }
@@ -177,6 +197,10 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                         "● " + String.format(Locale.US, "%02d:%02d", ui.recordSeconds / 60, ui.recordSeconds % 60),
                         color = RecordRed, textColor = Color.White,
                     )
+                }
+                if (config.mode == CaptureMode.VIDEO && measuredFps > 0f) {
+                    val res = if (config.video4k) "4K" else "1080p"
+                    StatusChip(res + " · " + config.videoRatio.label + " · " + measuredFps.roundToInt() + " fps")
                 }
                 if (ui.comparing) StatusChip("Original")
                 if (ui.processingCount > 0) StatusChip("Processing…", spinner = true)

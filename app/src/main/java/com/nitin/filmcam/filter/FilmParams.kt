@@ -113,10 +113,38 @@ data class FilmParams(
         )
         const val GOLDEN_PRESET_NAME = "Golden"
 
+        /**
+         * "Ochre": tuned to match a reference you liked (rich mustard/rust warm colours, muted
+         * steel-blue cools, warm-grey neutrals, heavy FINE monochrome grain that stays strong in
+         * the shadows, matte blacks around 0.08-0.10). Measured on the test scene: grain 0.029
+         * (reference 0.025-0.036), blacks 0.08, highlights 0.93.
+         */
+        val OCHRE = GOLDEN.copy(
+            warmth = 0.12f, contrast = 0.95f, blackLift = 0.10f, whiteRoll = 0.95f,
+            saturation = 0.92f, pastel = 0.4f, dyeMix = 0.5f, colorDensity = 0.55f,
+            hues = listOf(
+                HueAdjust(1.00f, -0.10f, 0.15f),  // red: deep rust
+                HueAdjust(1.10f, 0f, 0f),         // orange / skin: rich
+                HueAdjust(1.15f, -0.05f, -0.25f), // yellow: mustard
+                HueAdjust(0.50f, -0.08f, -0.50f), // green: olive
+                HueAdjust(0.80f, 0f, 0f),         // teal
+                HueAdjust(0.70f, -0.10f, -0.30f), // blue: steel
+                HueAdjust(0.50f, 0f, 0f),         // purple
+                HueAdjust(0.60f, 0f, 0f),         // magenta
+            ),
+            shadowTint = Tint(-0.004f, 0f, 0.012f),
+            midTint = Tint(0.012f, 0.004f, -0.012f),      // warm-grey neutrals
+            highlightTint = Tint(0.020f, 0.012f, -0.020f),
+            grainAmount = 0.13f, grainSize = 1.3f, grainDensity = 0.7f, grainColor = 0.1f,
+            halation = 0.25f, softness = 0.25f, vignette = 0.05f,
+        )
+        const val OCHRE_PRESET_NAME = "Ochre"
+
         /** Built-in presets, in display order. They can't be overwritten or deleted. */
         val BUILT_INS: Map<String, FilmParams> = linkedMapOf(
             DEFAULT_PRESET_NAME to DEFAULT,
             GOLDEN_PRESET_NAME to GOLDEN,
+            OCHRE_PRESET_NAME to OCHRE,
         )
     }
 }

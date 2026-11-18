@@ -5,6 +5,7 @@ import android.content.Context
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Range
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraEffect
 import androidx.camera.core.CameraSelector
@@ -48,7 +49,12 @@ data class BindConfig(
     val ratio: Ratio = Ratio.R4_3,
     val video4k: Boolean = false,
     val flash: Flash = Flash.OFF,
-)
+    val videoRatio: Ratio = Ratio.R16_9,
+    val video60: Boolean = false,
+) {
+    /** Frame rate actually requested: 60 only at 1080p (4K stays at 30). */
+    val videoFps: Int get() = if (video60 && !video4k) 60 else 30
+}
 
 /**
  * Owns the CameraX use cases and binds them to the screen's lifecycle.
@@ -62,6 +68,10 @@ data class BindConfig(
  *           stream between them ("stream sharing"), so the shader runs once per frame and what
  *           you see is exactly what gets recorded.
  * Switching mode re-binds (a short blink), which keeps each layout simple and well supported.
+ *
+ * Video can be 4:3 or 16:9 and 30 or 60 fps (60 at 1080p only). Bitrate is set higher than
+ * the phone's default on purpose: film grain is fine random detail, which is exactly what a
+ * video encoder throws away first when it is short of bits ("mushy" grain).
  */
 class CameraController(
     private val context: Context,
@@ -94,13 +104,18 @@ class CameraController(
             imageCapture = null
             videoCapture = null
 
-            val ratio = if (config.mode == CaptureMode.VIDEO) Ratio.R16_9 else config.ratio
+            val isVideo = config.mode == CaptureMode.VIDEO
+            val ratio = if (isVideo) config.videoRatio else config.ratio
             val aspect = if (ratio == Ratio.R4_3) AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY
             else AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY
+            val fps = config.videoFps
 
-            val preview = Preview.Builder()
+            val previewBuilder = Preview.Builder()
                 .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(aspect).build())
-                .build()
+            // In video mode the preview shares the recording's camera stream, so ask for the same
+            // frame rate (otherwise CameraX may settle on 30 for both).
+            if (isVideo) previewBuilder.setTargetFrameRate(Range(fps, fps))
+            val preview = previewBuilder.build()
             preview.surfaceProvider = previewView.surfaceProvider
 
             val group = UseCaseGroup.Builder().addUseCase(preview)
@@ -131,9 +146,13 @@ class CameraController(
                     } else {
                         QualitySelector.from(Quality.FHD, FallbackStrategy.lowerQualityOrHigherThan(Quality.FHD))
                     }
-                    val recorder = Recorder.Builder().setQualitySelector(quality).build()
+                    val recorder = Recorder.Builder()
+                        .setQualitySelector(quality)
+                        .setAspectRatio(if (config.videoRatio == Ratio.R4_3) AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9)
+                        .setTargetVideoEncodingBitRate(videoBitrate(config))
+                        .build()
                     val vc = VideoCapture.Builder(recorder)
-                        .setTargetFrameRate(Range(30, 30))
+                        .setTargetFrameRate(Range(fps, fps))
                         .setTargetRotation(targetRotation)
                         .build()
                     videoCapture = vc
@@ -225,6 +244,23 @@ class CameraController(
         } catch (_: Exception) {
             false
         }
+    }
+
+    /** Whether the camera offers a frame-rate range reaching 60 fps. */
+    fun supports60fps(): Boolean {
+        val cam = camera ?: return false
+        return try {
+            cam.cameraInfo.supportedFrameRateRanges.any { it.upper >= 60 }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** Encoder bitrate (bits/s): generous so grain survives compression. */
+    private fun videoBitrate(config: BindConfig): Int = when {
+        config.video4k -> 60_000_000
+        config.videoFps >= 60 -> 32_000_000
+        else -> 20_000_000
     }
 
     /** Captures a full-resolution, UNFILTERED JPEG into [file]. Filtering happens afterwards. */

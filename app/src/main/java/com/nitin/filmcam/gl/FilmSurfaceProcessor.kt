@@ -6,7 +6,6 @@ import android.opengl.EGLSurface
 import android.opengl.GLES30
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.SystemClock
 import android.util.Log
 import android.util.Size
 import android.view.Surface
@@ -61,7 +60,20 @@ class FilmSurfaceProcessor(private val appContext: Context) : SurfaceProcessor {
     private val outputs = LinkedHashMap<SurfaceOutput, Output>()
     private val texMatrix = FloatArray(16)
     private val outMatrix = FloatArray(16)
-    private val startTime = SystemClock.elapsedRealtime()
+    private var frameIndex = 0L
+    private var lastTimestampNs = 0L
+
+    /** Frames per second actually arriving from the camera (smoothed). Read by the UI. */
+    @Volatile var measuredFps: Float = 0f
+        private set
+
+    private fun measureFps(timestampNs: Long) {
+        if (lastTimestampNs != 0L && timestampNs > lastTimestampNs) {
+            val fps = 1e9f / (timestampNs - lastTimestampNs)
+            measuredFps = if (measuredFps == 0f) fps else measuredFps * 0.9f + fps * 0.1f
+        }
+        lastTimestampNs = timestampNs
+    }
 
     private class Input(val textureId: Int, val surface: Surface, val size: Size)
     private class Output(val eglSurface: EGLSurface, val size: Size, val targets: Int)
@@ -150,9 +162,12 @@ class FilmSurfaceProcessor(private val appContext: Context) : SurfaceProcessor {
         surfaceTexture.getTransformMatrix(texMatrix)
         val timestampNs = surfaceTexture.timestamp
         val params = params
-        // Wrap time so float precision stays good in very long sessions (grain only needs
-        // "different each frame", not a meaningful clock).
-        val seconds = ((SystemClock.elapsedRealtime() - startTime) % 3_600_000L) / 1000f
+        // Grain seed: the shader uses uint(uTime * 60), so frame n gets uTime = n / 60 and every
+        // frame gets a NEW grain pattern, at 30 fps and at 60 fps alike (a clock could give two
+        // 60 fps frames the same pattern). Wrapped so float precision stays exact.
+        frameIndex = (frameIndex + 1) % 200_000L
+        val seconds = frameIndex / 60f
+        measureFps(timestampNs)
 
         val motion = nextMotion(params.filmMotion)
         val halo = halationPass

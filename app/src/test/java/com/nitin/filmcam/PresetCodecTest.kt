@@ -40,7 +40,7 @@ class PresetCodecTest {
     @Test
     fun presetsAlwaysStartWithBuiltIns() {
         val decoded = PresetCodec.decodePresets(null)
-        assertEquals(listOf("Field", "Golden"), decoded.keys.toList())
+        assertEquals(listOf("Field", "Golden", "Ochre"), decoded.keys.toList())
         assertEquals(FilmParams.DEFAULT, decoded["Field"])
         assertEquals(FilmParams.GOLDEN, decoded["Golden"])
     }
@@ -52,7 +52,7 @@ class PresetCodecTest {
             "Grainy" to FilmParams(grainAmount = 0.2f),
         )
         val decoded = PresetCodec.decodePresets(PresetCodec.encodePresets(map))
-        assertEquals(listOf("Field", "Golden", "Soft", "Grainy"), decoded.keys.toList())
+        assertEquals(listOf("Field", "Golden", "Ochre", "Soft", "Grainy"), decoded.keys.toList())
         assertEquals(0.8f, decoded["Soft"]!!.softness, 1e-6f)
     }
 

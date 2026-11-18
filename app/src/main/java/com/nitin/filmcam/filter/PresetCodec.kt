@@ -9,6 +9,8 @@ data class AppSettings(
     val saveOriginal: Boolean = false,
     val video4k: Boolean = false,
     val ratio43: Boolean = true,
+    val videoRatio43: Boolean = false,
+    val video60: Boolean = false,
 )
 
 /**
