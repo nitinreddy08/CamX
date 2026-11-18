@@ -22,8 +22,7 @@ object ShaderSource {
 
     /** Halation passes 2-3 (blur); always reads our own small 2D buffers. */
     fun haloBlur(context: Context): String =
-        "#version 300 es
-" + read(context, "shaders/halo_blur.frag")
+        "#version 300 es\n" + read(context, "shaders/halo_blur.frag")
 
     /**
      * Camera frames live in a special "external" texture (samplerExternalOES) because they are

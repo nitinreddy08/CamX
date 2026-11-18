@@ -49,10 +49,10 @@ The repo includes a fixed **debug keystore** (`app/debug.keystore`), so every CI
 | Top bar | **Flash** (photo: off/auto/on; video: torch on/off) · **4:3 / 16:9** (photo mode; video is always 16:9) · **Settings** |
 | Preview | **Tap** to focus/expose · **pinch** to zoom · **long-press** to see the unfiltered image while you hold |
 | Bottom | **PHOTO · VIDEO** toggle · last-capture **thumbnail** (opens the gallery) · **shutter** · **Front/Back** |
-| **Filter ▲** | Opens the slider panel above the controls, so the preview stays visible: presets, Intensity, Grain amount, Grain size, Softness, Vignette, Reset, and **Advanced** (contrast, black lift, white roll-off, saturation, green desat, green→olive, three RGB tints) |
+| **Filter ▲** | Opens the slider panel above the controls (about a third of the screen, so the preview stays big): presets, Intensity, Exposure, Warmth, Grain amount, Grain size, Halation, Softness, Vignette, Reset, and **Advanced** (film curve, contrast, black lift, white roll-off, saturation, pastel highlights, dye mixing, colour density, green controls, **per-colour editor**, three RGB tints, grain character, video film motion) |
 | Settings | Also save original photo · Record 4K video (only if the camera supports it) · **Shader test screen** |
 
-- **Presets:** tap a preset to apply it, tap **+ Save** to store the current sliders, and long-press a preset to delete it. The built-in **Field** preset holds the spec defaults and can't be deleted.
+- **Presets:** tap a preset to apply it, tap **+ Save** to store the current sliders, and long-press a preset to delete it. Two built-ins can't be deleted: **Field** (the original spec look) and **Golden** (the tuned film look, see §5b).
 - **Persistence:** the last-used look, your presets and your settings are kept across restarts (DataStore, JSON).
 - **Saved files:** `Pictures/FilmCam/IMG_yyyyMMdd_HHmmss.jpg` (JPEG quality 95) and `Movies/FilmCam/VID_yyyyMMdd_HHmmss.mp4`. With "save original" on, you also get `IMG_..._original.jpg`.
 
@@ -125,6 +125,38 @@ CameraX ─┬─ Preview ──────────┐
 
 ---
 
+## 5b. The film engine (v2) and the Golden preset
+
+What each control imitates, and why (all of it lives in `film.frag`, heavily commented):
+
+| Control | What real film does | What the shader does |
+|---|---|---|
+| **Exposure** | Over-exposed negatives look airy and pastel | Multiplies the light (in linear light, i.e. real light amounts) before everything else, with a soft knee so it rolls into white instead of clipping |
+| **Warmth** | Film has no auto white balance; golden hour stays golden | Colour-temperature shift (more red, less blue) at constant brightness |
+| **Film curve** | Film responds to light along an S: soft toe, straight middle, soft shoulder | Per-channel soft-S around mid-grey; white lands exactly on paper white, black on the faded print black. Bright colours hit the shoulder first and turn pastel, like film |
+| **Dye mixing** | Impure dyes bleed into each other: rich but muted colour | Small 3×3 colour matrix that keeps greys grey |
+| **Pastel highlights** | Little dye near paper white, so highlights lose colour | Saturation fades toward the brightest (and darkest) tones |
+| **Colour density** | Strong colours on film are *denser* (darker), not neon | Darkens pixels in proportion to how colourful they are |
+| **Colours (8 bands)** | Warm hues reproduce richly; greens, blues and purples sit between the film's sensitivities and come out muted or shifted | Red, Orange/skin, Yellow, Green, Teal, Blue, Purple, Magenta: saturation, brightness and hue shift per band, smoothly blended; greys untouched |
+| **Halation** | Bright light bounces off the film base back into the red layer: an orange-red glow around lamps, windows, sun | 3 small passes: isolate near-clipping light at ~1/4 resolution, blur it, add it back red-orange. Same relative size in preview and full-res photos |
+| **Grain model** | Print grain shows most in shadows/midtones, least in bright highlights | Density-based weighting; grain is no longer weakened by Intensity |
+| **Film motion** (video) | Projected film drifts a little and flickers | Tiny smoothed frame drift + ±3% brightness flicker; off by default, never in photos |
+
+**Neutral values switch every new control off.** Field uses only neutral values, so it renders exactly as before (verified: 0 pixels differ between the v1 and v2 shaders on the test scene). Presets saved earlier load unchanged.
+
+**Golden** was tuned offline on real sample photos (portrait, coffee, night sky, cat, garage) and on the test scene, using the same shader:
+- **Tone:** film curve on; blacks lifted to 0.095 (matte), whites at 0.96 (bright and creamy, not grey), contrast 0.85.
+- **Light:** warmth +0.16, halation 0.3, vignette 0.06.
+- **Colour:** saturation 0.84, pastel 0.6, dye mixing 0.6, colour density 0.45.
+- **Per colour:** red deep and slightly orange; orange/skin natural; yellow leans golden; green 0.55 shifted to olive; teal kept; blue 0.70 shifted to teal; purple and magenta faded.
+- **Grain:** 0.09 at size 1.8, film density model.
+
+Compared with Field on the samples, the brightest 1% sits at 0.93–0.95 instead of 0.79–0.85, with richer warm colours.
+
+Tune it further on the phone, then save your version with **+ Save**.
+
+---
+
 ## 6. Decisions and deviations from the spec (and why)
 
 1. **Photo path: separate ImageCapture.** Photos are captured unfiltered at full resolution and then filtered offscreen with the same shader. Routing stills through the effect can cap them at stream resolution.
@@ -139,6 +171,8 @@ CameraX ─┬─ Preview ──────────┐
 10. **Versions are the latest stable as of 2026-11-17:** AGP 9.5.1, Gradle 9.9.1, Kotlin 2.4.21, CameraX 1.6.2, Compose BOM 2026.09.00. `.github/workflows/versions.yml` prints the latest versions if you want to bump them.
 11. **This build environment couldn't reach Google's Maven/SDK host,** so every build was compiled and unit-tested on GitHub Actions. The shader was additionally compiled and rendered locally through WebGL2. Nothing has been run on a real phone yet; please use the checklist above.
 12. **M7 (`.cube` LUT import) is not implemented.** It was optional and out of scope for this run.
+13. **Engine v2 changes Intensity's meaning.** It now blends only the colour/tone look; grain keeps its own strength. Hold-to-compare is a true bypass: no grain, no filter.
+14. **The film curve works on the phone's display values, not on scene light.** I tried a log-exposure curve first. Phone images hold ~6 stops below mid-grey but only ~2.5 above, so a log curve couldn't give lifted shadows and bright whites at the same time. The soft-S in display space does both.
 
 ## 7. Known limitations
 - No OEM processing: this app uses the standard camera interface. You won't get the phone maker's own colour tuning, multi-frame HDR or night mode, so raw quality, especially in low light, is below the stock camera's.
