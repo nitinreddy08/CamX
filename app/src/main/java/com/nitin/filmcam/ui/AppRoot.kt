@@ -12,7 +12,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 
-enum class Screen { CAMERA, SETTINGS, DEBUG }
+enum class Screen { CAMERA, SETTINGS, DEBUG, CAMERA_INFO }
 
 /** Top-level switch: permission screen until the camera is allowed, then camera / settings. */
 @Composable
@@ -30,11 +30,17 @@ fun AppRoot() {
     val vm: CameraViewModel = viewModel()
     var screen by rememberSaveable { mutableStateOf(Screen.CAMERA) }
     BackHandler(enabled = screen != Screen.CAMERA) {
-        screen = if (screen == Screen.DEBUG) Screen.SETTINGS else Screen.CAMERA
+        screen = if (screen == Screen.DEBUG || screen == Screen.CAMERA_INFO) Screen.SETTINGS else Screen.CAMERA
     }
     when (screen) {
         Screen.CAMERA -> CameraScreen(vm, onOpenSettings = { screen = Screen.SETTINGS })
-        Screen.SETTINGS -> SettingsScreen(vm, onBack = { screen = Screen.CAMERA }, onOpenDebug = { screen = Screen.DEBUG })
+        Screen.SETTINGS -> SettingsScreen(
+            vm,
+            onBack = { screen = Screen.CAMERA },
+            onOpenDebug = { screen = Screen.DEBUG },
+            onOpenCameraInfo = { screen = Screen.CAMERA_INFO },
+        )
+        Screen.CAMERA_INFO -> CameraInfoScreen(onBack = { screen = Screen.SETTINGS })
         Screen.DEBUG -> DebugShaderScreen(vm, onBack = { screen = Screen.SETTINGS })
     }
 }

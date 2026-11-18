@@ -32,7 +32,7 @@ import com.nitin.filmcam.ui.theme.Sand
 import com.nitin.filmcam.ui.theme.Terracotta
 
 @Composable
-fun SettingsScreen(vm: CameraViewModel, onBack: () -> Unit, onOpenDebug: () -> Unit) {
+fun SettingsScreen(vm: CameraViewModel, onBack: () -> Unit, onOpenDebug: () -> Unit, onOpenCameraInfo: () -> Unit) {
     val settings by vm.settings.collectAsState(initial = AppSettings())
     val supports4k by vm.supports4k.collectAsState()
 
@@ -66,6 +66,19 @@ fun SettingsScreen(vm: CameraViewModel, onBack: () -> Unit, onOpenDebug: () -> U
             enabled = supports4k,
             onChange = vm::setVideo4k,
         )
+        HorizontalDivider(color = Sand)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenCameraInfo)
+                .padding(vertical = 14.dp)
+        ) {
+            Text("Camera info (60 fps check)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Lists every camera the phone lets apps use and which frame rates each allows.",
+                style = MaterialTheme.typography.bodySmall, color = InkSoft,
+            )
+        }
         HorizontalDivider(color = Sand)
         Column(
             Modifier

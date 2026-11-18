@@ -67,6 +67,7 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val ui by vm.ui.collectAsState()
+    val supports60 by vm.supports60.collectAsState()
     val params by vm.params.collectAsState()
     val presets by vm.presets.collectAsState()
     var filterOpen by rememberSaveable { mutableStateOf(false) }
@@ -140,11 +141,13 @@ fun CameraScreen(vm: CameraViewModel, onOpenSettings: () -> Unit) {
                 onClick = { vm.setRatio(if (currentRatio == Ratio.R4_3) Ratio.R16_9 else Ratio.R4_3) },
             )
             if (isVideo) {
+                // Show the rate that will really be used: 60 only if a camera allows it.
+                val sixty = config.videoFps == 60 && supports60
                 Pill(
-                    config.videoFps.toString() + " fps",
+                    (if (sixty) 60 else 30).toString() + " fps",
                     enabled = !ui.recording,
-                    selected = config.videoFps == 60,
-                    onClick = { vm.setVideo60(!config.video60) },
+                    selected = sixty,
+                    onClick = { vm.setVideo60(!sixty) },
                 )
             }
             Spacer(Modifier.weight(1f))

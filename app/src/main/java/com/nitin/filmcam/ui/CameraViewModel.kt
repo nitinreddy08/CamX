@@ -180,7 +180,7 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
         controller.bind(o, v, _ui.value.config,
             onBound = {
                 _supports4k.value = controller.supports4k()
-                _supports60.value = controller.supports60fps()
+                _supports60.value = controller.supports60fps(_ui.value.config.lensFacing)
                 _ui.update { s ->
                     s.copy(
                         zoomRatio = 1f,
@@ -223,7 +223,8 @@ class CameraViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setVideo60(on: Boolean) {
         if (on && !_supports60.value) {
-            showMessage("This camera doesn't offer 60 fps to apps; recording at 30 fps")
+            showMessage("No camera on this side lets apps record 60 fps (the phone maker limits it). Details: Settings → Camera info")
+            return
         }
         if (on && _ui.value.config.video4k) showMessage("60 fps is for 1080p; turn off 4K in Settings to use it")
         viewModelScope.launch { repository.updateSettings { it.copy(video60 = on) } }

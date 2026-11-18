@@ -5,7 +5,11 @@ import android.content.Context
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Range
+import androidx.annotation.OptIn
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.AspectRatio
+import androidx.camera.core.CameraInfo
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraEffect
 import androidx.camera.core.CameraSelector
@@ -163,7 +167,7 @@ class CameraController(
             }
 
             try {
-                val selector = CameraSelector.Builder().requireLensFacing(config.lensFacing).build()
+                val selector = selectorFor(provider, config)
                 val cam = provider.bindToLifecycle(owner, selector, group.build())
                 camera = cam
                 requestedZoom = null
@@ -246,14 +250,39 @@ class CameraController(
         }
     }
 
-    /** Whether the camera offers a frame-rate range reaching 60 fps. */
-    fun supports60fps(): Boolean {
-        val cam = camera ?: return false
-        return try {
-            cam.cameraInfo.supportedFrameRateRanges.any { it.upper >= 60 }
-        } catch (_: Exception) {
-            false
+    /**
+     * Whether ANY camera facing [lensFacing] lets apps run at 60 fps. Phones decide this per
+     * camera; the main back camera may be capped at 30 while another back camera allows 60.
+     */
+    fun supports60fps(lensFacing: Int): Boolean {
+        val p = provider ?: return false
+        return sixtyFpsCamera(p, lensFacing) != null
+    }
+
+    private fun reaches60(info: CameraInfo): Boolean =
+        runCatching { info.supportedFrameRateRanges.any { it.upper >= 60 } }.getOrDefault(false)
+
+    /** The first camera facing [lensFacing] that allows 60 fps (the default camera if it does). */
+    private fun sixtyFpsCamera(p: ProcessCameraProvider, lensFacing: Int): CameraInfo? =
+        p.availableCameraInfos.filter { it.lensFacing == lensFacing }.firstOrNull { reaches60(it) }
+
+    /**
+     * Which camera to open. Normally just "the back (or front) camera". For 60 fps video, if the
+     * default camera is capped at 30 but another camera on the same side allows 60, pick that one
+     * by its Camera2 ID.
+     */
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun selectorFor(p: ProcessCameraProvider, config: BindConfig): CameraSelector {
+        val base = CameraSelector.Builder().requireLensFacing(config.lensFacing)
+        if (config.mode == CaptureMode.VIDEO && config.videoFps >= 60) {
+            val target = sixtyFpsCamera(p, config.lensFacing)
+            if (target != null) {
+                val id = Camera2CameraInfo.from(target).cameraId
+                Log.i(TAG, "60 fps requested: using camera " + id)
+                return base.addCameraFilter { infos -> infos.filter { Camera2CameraInfo.from(it).cameraId == id } }.build()
+            }
         }
+        return base.build()
     }
 
     /** Encoder bitrate (bits/s): generous so grain survives compression. */
