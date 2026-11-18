@@ -3,6 +3,9 @@ package com.nitin.filmcam.gl
 import android.opengl.GLES11Ext
 import android.opengl.GLES30
 import android.util.Log
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
 
 /** Small OpenGL helpers: compile/link shaders, make textures, check errors. */
 object GlUtil {
@@ -68,6 +71,46 @@ object GlUtil {
         GLES30.glTexParameteri(target, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
         GLES30.glTexParameteri(target, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
     }
+
+    /** Empty RGBA8 texture usable as a render target. */
+    fun createRenderTexture(width: Int, height: Int): Int {
+        val tex = create2DTexture()
+        GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA, width, height, 0,
+            GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, null)
+        return tex
+    }
+
+    /** 1x1 texture of one colour (used as "no halation" = black). */
+    fun createSolidTexture(r: Int, g: Int, b: Int): Int {
+        val tex = create2DTexture()
+        val px = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder())
+        px.put(r.toByte()).put(g.toByte()).put(b.toByte()).put(255.toByte()).position(0)
+        GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA, 1, 1, 0,
+            GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, px)
+        return tex
+    }
+
+    // Full-screen quad as a triangle strip: bottom-left, bottom-right, top-left, top-right.
+    private val QUAD_POS: FloatBuffer = floatBuffer(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
+    private val QUAD_UV: FloatBuffer = floatBuffer(0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f)
+
+    /** Draws the full-viewport rectangle with [program]'s aPosition / aTexCoord attributes. */
+    fun drawQuad(program: Int) {
+        val aPosition = GLES30.glGetAttribLocation(program, "aPosition")
+        val aTexCoord = GLES30.glGetAttribLocation(program, "aTexCoord")
+        GLES30.glEnableVertexAttribArray(aPosition)
+        GLES30.glVertexAttribPointer(aPosition, 2, GLES30.GL_FLOAT, false, 0, QUAD_POS)
+        GLES30.glEnableVertexAttribArray(aTexCoord)
+        GLES30.glVertexAttribPointer(aTexCoord, 2, GLES30.GL_FLOAT, false, 0, QUAD_UV)
+        GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
+        GLES30.glDisableVertexAttribArray(aPosition)
+        GLES30.glDisableVertexAttribArray(aTexCoord)
+    }
+
+    private fun floatBuffer(vararg v: Float): FloatBuffer =
+        ByteBuffer.allocateDirect(v.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply {
+            put(v); position(0)
+        }
 
     fun deleteTexture(id: Int) {
         GLES30.glDeleteTextures(1, intArrayOf(id), 0)

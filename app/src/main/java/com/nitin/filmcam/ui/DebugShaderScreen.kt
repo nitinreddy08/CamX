@@ -186,7 +186,7 @@ private fun runDebug(context: android.content.Context, source: Uri?, params: Fil
     val smallMs = System.currentTimeMillis() - t
 
     // Display copies, ~1080 px wide max.
-    val beforeUpright = renderer.render(small, params.copy(intensity = 0f), orientation, recycleSource = true)
+    val beforeUpright = renderer.render(small, params, orientation, recycleSource = true, bypass = true)
     val after = scaleToWidth(outSmall, 1080)
 
     // Centre crop: 20% of the short side, same frame fraction in both.

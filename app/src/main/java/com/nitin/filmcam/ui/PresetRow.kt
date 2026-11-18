@@ -35,7 +35,7 @@ import com.nitin.filmcam.ui.theme.Sand
 import com.nitin.filmcam.ui.theme.Terracotta
 
 /**
- * Named presets: tap to apply, long-press to delete (except the built-in "Field"),
+ * Named presets: tap to apply, long-press to delete (except the built-ins "Field" and "Golden"),
  * "+ Save" stores the current sliders under a new name.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -65,7 +65,7 @@ fun PresetRow(
                         .border(1.dp, Sand, RoundedCornerShape(50))
                         .combinedClickable(
                             onClick = { onApply(p) },
-                            onLongClick = { if (name != FilmParams.DEFAULT_PRESET_NAME) deleting = name },
+                            onLongClick = { if (name !in FilmParams.BUILT_INS) deleting = name },
                         )
                         .padding(horizontal = 14.dp, vertical = 7.dp)
                 ) {

@@ -34,6 +34,7 @@ class PhotoFilterRenderer(private val appContext: Context) {
     private var egl: EglCore? = null
     private var pbuffer: EGLSurface? = null
     private var shader: FilmShader? = null
+    private var halationPass: HalationPass? = null
     private var maxTextureSize = 4096
 
     /** Largest image side the GPU can take; bigger photos must be downscaled when decoding. */
@@ -46,6 +47,7 @@ class PhotoFilterRenderer(private val appContext: Context) {
      * @param exifOrientation ExifInterface.ORIENTATION_* of the source; applied while filtering
      * @param timeSeconds grain seed; 0 = the static photo grain pattern
      * @param recycleSource set false if the caller still needs [source] (debug screen)
+     * @param bypass true = no filter, only the EXIF rotation (debug screen "before")
      */
     fun render(
         source: Bitmap,
@@ -53,19 +55,32 @@ class PhotoFilterRenderer(private val appContext: Context) {
         exifOrientation: Int = ExifTransform.NORMAL,
         timeSeconds: Float = 0f,
         recycleSource: Boolean = true,
+        bypass: Boolean = false,
     ): Bitmap = runOnGl {
         val film = shader!!
+        val halo = halationPass!!
         val inW = source.width
         val inH = source.height
         val swap = ExifTransform.swapsDimensions(exifOrientation)
         val outW = if (swap) inH else inW
         val outH = if (swap) inW else inH
 
-        // 1. Upload.
+        // 1. Upload. Mipmaps (pre-shrunk copies) let the halation pass average a 12-50 MP photo
+        //    down to its small buffer smoothly, without sparkly aliasing.
         val inputTex = GlUtil.create2DTexture()
         GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, source, 0)
         GlUtil.checkError("texImage2D")
         if (recycleSource) source.recycle()
+        GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR_MIPMAP_LINEAR)
+        val texMatrix = ExifTransform.texMatrix(exifOrientation)
+
+        // Halation glow for the whole photo, computed once before the strips.
+        val haloTexture = if (params.halation > 0f && !bypass) {
+            halo.render(inputTex, texMatrix, outW, outH, inW, inH, Motion.NONE)
+        } else {
+            halo.blackTexture
+        }
 
         // 2. Strip framebuffer: ~8 MB per strip regardless of photo size.
         val stripH = max(16, min(outH, (8 * 1024 * 1024) / (outW * 4)))
@@ -86,7 +101,7 @@ class PhotoFilterRenderer(private val appContext: Context) {
         val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
         val stripBytes = ByteBuffer.allocateDirect(outW * stripH * 4).order(ByteOrder.LITTLE_ENDIAN)
         val stripInts = IntArray(outW * stripH)
-        val texMatrix = ExifTransform.texMatrix(exifOrientation)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo[0])
 
         // 3. Render + read back strip by strip.
         var y0 = 0
@@ -105,6 +120,8 @@ class PhotoFilterRenderer(private val appContext: Context) {
                 inWidth = inW,
                 inHeight = inH,
                 timeSeconds = timeSeconds,
+                haloTexture = haloTexture,
+                bypass = bypass,
                 swapRedBlue = true,
             )
             stripBytes.clear()
@@ -127,9 +144,10 @@ class PhotoFilterRenderer(private val appContext: Context) {
     fun release() {
         thread.execute {
             shader?.release()
+            halationPass?.release()
             pbuffer?.let { egl?.releaseSurface(it) }
             egl?.release()
-            shader = null; egl = null; pbuffer = null
+            shader = null; halationPass = null; egl = null; pbuffer = null
         }
         thread.shutdown()
     }
@@ -142,6 +160,7 @@ class PhotoFilterRenderer(private val appContext: Context) {
             core.makeCurrent(pb)
             egl = core; pbuffer = pb
             shader = FilmShader(appContext, ShaderSource.Input.BITMAP_2D)
+            halationPass = HalationPass(appContext, ShaderSource.Input.BITMAP_2D)
             val v = IntArray(1)
             GLES30.glGetIntegerv(GLES30.GL_MAX_TEXTURE_SIZE, v, 0)
             maxTextureSize = v[0]

@@ -39,7 +39,7 @@ class SettingsRepository(private val context: Context) {
     }
 
     suspend fun deletePreset(name: String) {
-        if (name == FilmParams.DEFAULT_PRESET_NAME) return
+        if (name in FilmParams.BUILT_INS) return
         context.filmStore.edit { prefs ->
             val map = LinkedHashMap(PresetCodec.decodePresets(prefs[keyPresets]))
             map.remove(name)

@@ -35,7 +35,7 @@ object PresetCodec {
     fun encodePresets(presets: Map<String, FilmParams>): String =
         json.encodeToString(PresetFile.serializer(), PresetFile(presets))
 
-    /** Always contains the built-in "Field" preset first. */
+    /** Always starts with the built-in presets ("Field", "Golden"). */
     fun decodePresets(s: String?): Map<String, FilmParams> {
         val stored = if (s.isNullOrBlank()) emptyMap()
         else runCatching { json.decodeFromString(PresetFile.serializer(), s).presets }.getOrDefault(emptyMap())
@@ -43,9 +43,8 @@ object PresetCodec {
     }
 
     fun withBuiltIns(presets: Map<String, FilmParams>): Map<String, FilmParams> {
-        val out = LinkedHashMap<String, FilmParams>()
-        out[FilmParams.DEFAULT_PRESET_NAME] = FilmParams.DEFAULT
-        presets.forEach { (k, v) -> if (k != FilmParams.DEFAULT_PRESET_NAME) out[k] = v }
+        val out = LinkedHashMap<String, FilmParams>(FilmParams.BUILT_INS)
+        presets.forEach { (k, v) -> if (k !in FilmParams.BUILT_INS) out[k] = v }
         return out
     }
 
@@ -59,7 +58,7 @@ object PresetCodec {
     fun cleanPresetName(raw: String): String? {
         val name = raw.trim().replace(Regex("\\s+"), " ")
         if (name.isEmpty() || name.length > 32) return null
-        if (name.equals(FilmParams.DEFAULT_PRESET_NAME, ignoreCase = true)) return null
+        if (FilmParams.BUILT_INS.keys.any { it.equals(name, ignoreCase = true) }) return null
         return name
     }
 }

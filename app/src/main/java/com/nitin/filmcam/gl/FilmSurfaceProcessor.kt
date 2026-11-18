@@ -55,6 +55,7 @@ class FilmSurfaceProcessor(private val appContext: Context) : SurfaceProcessor {
     private var egl: EglCore? = null
     private var placeholderSurface: EGLSurface? = null
     private var shader: FilmShader? = null
+    private var halationPass: HalationPass? = null
     private var released = false
     private val inputs = HashMap<SurfaceTexture, Input>()
     private val outputs = LinkedHashMap<SurfaceOutput, Output>()
@@ -76,6 +77,7 @@ class FilmSurfaceProcessor(private val appContext: Context) : SurfaceProcessor {
                 egl = core
                 placeholderSurface = placeholder
                 shader = FilmShader(appContext, ShaderSource.Input.CAMERA_EXTERNAL)
+                halationPass = HalationPass(appContext, ShaderSource.Input.CAMERA_EXTERNAL)
             } catch (t: Throwable) {
                 Log.e(TAG, "GL init failed", t)
             }
@@ -152,6 +154,9 @@ class FilmSurfaceProcessor(private val appContext: Context) : SurfaceProcessor {
         // "different each frame", not a meaningful clock).
         val seconds = ((SystemClock.elapsedRealtime() - startTime) % 3_600_000L) / 1000f
 
+        val motion = nextMotion(params.filmMotion)
+        val halo = halationPass
+
         for ((surfaceOutput, out) in outputs) {
             // Combine the camera's texture matrix with this output's own rotation/crop/mirror.
             surfaceOutput.updateTransformMatrix(outMatrix, texMatrix)
@@ -161,9 +166,19 @@ class FilmSurfaceProcessor(private val appContext: Context) : SurfaceProcessor {
                 Log.w(TAG, "output surface lost", t)
                 continue
             }
-            GLES30.glViewport(0, 0, out.size.width, out.size.height)
             val touchesVideo = (out.targets and CameraEffect.VIDEO_CAPTURE) != 0
             val showOriginal = compareOriginal && !(touchesVideo && recording)
+
+            // Halation glow (3 small passes into our own buffers), only when it's switched on.
+            val haloTexture = if (halo != null && params.halation > 0f && !showOriginal) {
+                halo.render(input.textureId, outMatrix, out.size.width, out.size.height,
+                    input.size.width, input.size.height, motion)
+            } else {
+                halo?.blackTexture ?: 0
+            }
+
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)  // draw to the window surface
+            GLES30.glViewport(0, 0, out.size.width, out.size.height)
             film.draw(
                 textureId = input.textureId,
                 texMatrix = outMatrix,
@@ -173,12 +188,39 @@ class FilmSurfaceProcessor(private val appContext: Context) : SurfaceProcessor {
                 inWidth = input.size.width,
                 inHeight = input.size.height,
                 timeSeconds = seconds,
-                intensityOverride = if (showOriginal) 0f else null,
+                haloTexture = haloTexture,
+                motion = if (showOriginal) Motion.NONE else motion,
+                bypass = showOriginal,
             )
             // The encoder needs the real capture time of each frame for correct A/V sync.
             core.setPresentationTime(out.eglSurface, timestampNs)
             core.swapBuffers(out.eglSurface)
         }
+    }
+
+    // Film motion state: smoothed random walks, so the frame drifts rather than jitters.
+    private val random = java.util.Random()
+    private var weaveX = 0f
+    private var weaveY = 0f
+    private var flicker = 0f
+
+    /**
+     * Next frame's gate weave + flicker for strength [m] (0..1). Vertical drift is larger than
+     * horizontal because film is pulled through the gate vertically. At m = 1 the frame moves
+     * up to ~0.2% of its height and brightness varies ~3%: felt more than seen.
+     */
+    private fun nextMotion(m: Float): Motion {
+        if (m <= 0f) return Motion.NONE
+        fun step(prev: Float, keep: Float) = keep * prev + (1f - keep) * (random.nextFloat() * 2f - 1f)
+        weaveX = step(weaveX, 0.85f)
+        weaveY = step(weaveY, 0.85f)
+        flicker = step(flicker, 0.5f)
+        return Motion(
+            weaveX = weaveX * 0.0012f * m,
+            weaveY = weaveY * 0.0020f * m,
+            inset = 0.004f * m,
+            flicker = flicker * 0.03f * m,
+        )
     }
 
     /** Frees every GL/EGL resource and stops the thread. Call once, when the screen is destroyed. */
@@ -201,11 +243,13 @@ class FilmSurfaceProcessor(private val appContext: Context) : SurfaceProcessor {
             if (core != null) {
                 core.makeCurrent(placeholderSurface!!)
                 shader?.release()
+                halationPass?.release()
                 core.releaseSurface(placeholderSurface!!)
                 core.release()
             }
             egl = null
             shader = null
+            halationPass = null
             glThread.quitSafely()
         }
     }

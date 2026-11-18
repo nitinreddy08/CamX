@@ -16,6 +16,15 @@ object ShaderSource {
     fun fragment(context: Context, input: Input): String =
         fragmentHeader(input) + read(context, "shaders/film.frag")
 
+    /** Halation pass 1 (downsample + bright-pass); reads the camera or the photo. */
+    fun haloPrefilter(context: Context, input: Input): String =
+        fragmentHeader(input) + read(context, "shaders/halo_prefilter.frag")
+
+    /** Halation passes 2-3 (blur); always reads our own small 2D buffers. */
+    fun haloBlur(context: Context): String =
+        "#version 300 es
+" + read(context, "shaders/halo_blur.frag")
+
     /**
      * Camera frames live in a special "external" texture (samplerExternalOES) because they are
      * YUV buffers straight from the camera hardware; the GPU converts to RGB while sampling.
